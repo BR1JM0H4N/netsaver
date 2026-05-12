@@ -292,9 +292,33 @@ public class MainActivity extends AppCompatActivity {
     /** True if url contains ext immediately followed by end-of-string, '?', or '#' */
     private static boolean segmentPattern(String lower, String ext) {
         int idx = lower.indexOf(ext);
-        if (idx < 0) return false;
-        int after = idx + ext.length();
-        return after == lower.length() || lower.charAt(after) == '?' || lower.charAt(after) == '#';
+        while (idx >= 0) {
+            int after = idx + ext.length();
+            if (after == lower.length() || lower.charAt(after) == '?' || lower.charAt(after) == '#') {
+                return true;
+            }
+            idx = lower.indexOf(ext, after);
+        }
+        return false;
+    }
+
+    /**
+     * Returns a savable MIME type when either the server Content-Type or the URL
+     * itself identifies media. A URL extension is intentionally allowed to win
+     * over generic or wrong server types because many cache-busted media links are
+     * served as application/octet-stream or text/plain even though they are files.
+     */
+    private String getSavableMimeType(String url, String rawContentType) {
+        String serverMime = rawContentType == null ? "" : rawContentType.split(";")[0].trim();
+        if (isSavableContentType(serverMime)) return serverMime;
+
+        String guessedMime = guessMime(url);
+        if (isSavableContentType(guessedMime) &&
+                looksLikeSavableFileByUrl(url.toLowerCase(Locale.ROOT))) {
+            return guessedMime;
+        }
+
+        return null;
     }
 
     /**
@@ -361,15 +385,16 @@ public class MainActivity extends AppCompatActivity {
                 return null;
             }
 
-            // Determine MIME (Content-Type from server is authoritative)
-            String rawCt   = response.header("content-type", "");
-            String mimeType = (rawCt != null && !rawCt.isEmpty())
-                    ? rawCt.split(";")[0].trim()
-                    : guessMime(url);
+            // Determine MIME. Some CDNs serve image/video files with generic or
+            // incorrect Content-Type values (for example application/octet-stream),
+            // so a strong URL extension match should still be saved with the MIME
+            // guessed from the URL. This fixes image URLs such as .jpg?cacheBust.
+            String rawCt = response.header("content-type", "");
+            String mimeType = getSavableMimeType(url, rawCt);
 
             // Secondary filter: confirm it's actually media/image by Content-Type
-            // (catches CDN URLs with no extension that we let through by URL pattern)
-            if (!isSavableContentType(mimeType)) {
+            // or by a concrete media extension in the URL.
+            if (mimeType == null) {
                 // Not a saveable file — return null so WebView fetches it normally
                 response.close();
                 savingUrls.remove(url);
@@ -406,6 +431,7 @@ public class MainActivity extends AppCompatActivity {
                     headers.put(name, response.header(name, ""));
                 }
             }
+            headers.put("Content-Type", mimeType);
             headers.put("Access-Control-Allow-Origin", "*");
             headers.put("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
 
