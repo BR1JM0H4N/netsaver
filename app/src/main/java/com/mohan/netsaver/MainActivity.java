@@ -2,6 +2,8 @@ package com.mohan.netsaver;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
@@ -12,7 +14,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -30,7 +35,11 @@ import android.widget.PopupMenu;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.color.DynamicColors;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
 import java.io.File;
@@ -78,6 +87,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        DynamicColors.applyToActivityIfAvailable(this);
         setContentView(R.layout.activity_main);
 
         initViews();
@@ -628,30 +638,59 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSavedFilesDialog() {
-        List<SavedFile> files = new ArrayList<>();
-        collectSavedFiles(files, Environment.DIRECTORY_MOVIES);
-        collectSavedFiles(files, Environment.DIRECTORY_PICTURES);
+        List<SavedFile> files = getSavedFiles();
         if (files.isEmpty()) {
             android.widget.Toast.makeText(this, "No saved files yet", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
+
+        View content = LayoutInflater.from(this).inflate(R.layout.dialog_saved_gallery, null, false);
+        TextView subtitle = content.findViewById(R.id.gallerySubtitle);
+        RecyclerView grid = content.findViewById(R.id.savedGalleryGrid);
+
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(content).create();
+        Runnable updateSubtitle = () -> subtitle.setText(files.size() + " saved item" + (files.size() == 1 ? "" : "s")
+                + " · tap a card to view");
+
+        SavedGalleryAdapter adapter = new SavedGalleryAdapter(files, () -> {
+            if (files.isEmpty()) {
+                dialog.dismiss();
+                android.widget.Toast.makeText(this, "No saved files left", android.widget.Toast.LENGTH_SHORT).show();
+            } else {
+                updateSubtitle.run();
+            }
+        });
+
+        grid.setLayoutManager(new GridLayoutManager(this, 2));
+        grid.setAdapter(adapter);
+        updateSubtitle.run();
+
+        content.findViewById(R.id.btnGalleryClose).setOnClickListener(v -> dialog.dismiss());
+        content.findViewById(R.id.btnGalleryDone).setOnClickListener(v -> dialog.dismiss());
+        content.findViewById(R.id.btnGalleryDeleteAll).setOnClickListener(v -> {
+            for (SavedFile sf : new ArrayList<>(files)) sf.file.delete();
+            files.clear();
+            adapter.notifyDataSetChanged();
+            dialog.dismiss();
+            android.widget.Toast.makeText(this, "Deleted all saved files", android.widget.Toast.LENGTH_SHORT).show();
+        });
+
+        dialog.setOnShowListener(d -> {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+        });
+        dialog.show();
+    }
+
+    private List<SavedFile> getSavedFiles() {
+        List<SavedFile> files = new ArrayList<>();
+        collectSavedFiles(files, Environment.DIRECTORY_MOVIES);
+        collectSavedFiles(files, Environment.DIRECTORY_PICTURES);
         files.sort((a, b) -> Long.compare(b.file.lastModified(), a.file.lastModified()));
-
-        String[] items = new String[files.size()];
-        for (int i = 0; i < files.size(); i++) {
-            items[i] = files.get(i).displayName + "  ·  " + files.get(i).getFormattedSize();
-        }
-
-        List<SavedFile> finalFiles = files;
-        new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-                .setTitle("Saved Files")
-                .setItems(items, (d, w) -> openFile(finalFiles.get(w).file))
-                .setNeutralButton("Delete All", (d, w) -> {
-                    for (SavedFile sf : finalFiles) sf.file.delete();
-                    android.widget.Toast.makeText(this, "Deleted all saved files", android.widget.Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Close", null)
-                .show();
+        return files;
     }
 
     private void collectSavedFiles(List<SavedFile> files, String directoryType) {
@@ -664,14 +703,111 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openFile(File file) {
-        Uri  uri  = Uri.fromFile(file);
+        Uri uri = getContentUri(file);
         String mt = guessMime(file.getName());
-        Intent i  = new Intent(Intent.ACTION_VIEW);
+        Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, mt);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try { startActivity(i); }
         catch (ActivityNotFoundException e) {
             android.widget.Toast.makeText(this, "No app to open this file", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareSavedFile(File file) {
+        Uri uri = getContentUri(file);
+        String mt = guessMime(file.getName());
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType(mt);
+        share.putExtra(Intent.EXTRA_STREAM, uri);
+        share.putExtra(Intent.EXTRA_SUBJECT, file.getName());
+        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivity(Intent.createChooser(share, "Share saved content")); }
+        catch (ActivityNotFoundException e) {
+            android.widget.Toast.makeText(this, "No app to share this file", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private Uri getContentUri(File file) {
+        return FileProvider.getUriForFile(this, BuildConfig.APPLICATION_ID + ".fileprovider", file);
+    }
+
+    private boolean isImageFile(File file) {
+        String mt = guessMime(file.getName());
+        return mt.startsWith("image/") && !mt.equals("image/svg+xml");
+    }
+
+    private String getGalleryKind(File file) {
+        String mt = guessMime(file.getName());
+        if (mt.startsWith("image/")) return "Image";
+        if (mt.startsWith("audio/")) return "Audio";
+        if (mt.startsWith("video/")) return "Video";
+        return "File";
+    }
+
+    private class SavedGalleryAdapter extends RecyclerView.Adapter<SavedGalleryAdapter.ViewHolder> {
+        private final List<SavedFile> files;
+        private final Runnable onChanged;
+
+        SavedGalleryAdapter(List<SavedFile> files, Runnable onChanged) {
+            this.files = files;
+            this.onChanged = onChanged;
+        }
+
+        @Override
+        public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            View view = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_saved_gallery, parent, false);
+            return new ViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(ViewHolder holder, int position) {
+            SavedFile saved = files.get(position);
+            holder.name.setText(saved.displayName);
+            holder.meta.setText(saved.getFormattedSize());
+            holder.kind.setText(getGalleryKind(saved.file));
+
+            if (isImageFile(saved.file)) {
+                holder.preview.setPadding(0, 0, 0, 0);
+                holder.preview.setImageURI(Uri.fromFile(saved.file));
+            } else {
+                int pad = (int) (28 * getResources().getDisplayMetrics().density);
+                holder.preview.setPadding(pad, pad, pad, pad);
+                holder.preview.setImageResource(R.drawable.ic_video);
+            }
+
+            holder.itemView.setOnClickListener(v -> openFile(saved.file));
+            holder.share.setOnClickListener(v -> shareSavedFile(saved.file));
+            holder.delete.setOnClickListener(v -> {
+                int current = holder.getBindingAdapterPosition();
+                if (current == RecyclerView.NO_POSITION) return;
+                SavedFile removed = files.remove(current);
+                removed.file.delete();
+                notifyItemRemoved(current);
+                onChanged.run();
+            });
+        }
+
+        @Override
+        public int getItemCount() {
+            return files.size();
+        }
+
+        class ViewHolder extends RecyclerView.ViewHolder {
+            final ImageView preview;
+            final TextView kind, name, meta;
+            final ImageButton share, delete;
+
+            ViewHolder(View itemView) {
+                super(itemView);
+                preview = itemView.findViewById(R.id.galleryPreview);
+                kind = itemView.findViewById(R.id.galleryKind);
+                name = itemView.findViewById(R.id.galleryFileName);
+                meta = itemView.findViewById(R.id.galleryFileMeta);
+                share = itemView.findViewById(R.id.btnGalleryShare);
+                delete = itemView.findViewById(R.id.btnGalleryDelete);
+            }
         }
     }
 
