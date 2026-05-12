@@ -21,6 +21,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -42,8 +43,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -220,8 +224,10 @@ public class MainActivity extends AppCompatActivity {
                 String url   = request.getUrl().toString();
                 String lower = url.toLowerCase(Locale.ROOT);
 
-                // Quick URL-pattern check (fast path, no network)
-                if (looksLikeSavableFileByUrl(lower)) {
+                // Only intercept requests that are likely media. When intercepted,
+                // the OkHttp response is returned to WebView, so this replaces the
+                // WebView fetch instead of adding a second network download.
+                if (shouldTrySavingRequest(request, lower)) {
                     return teeStream(url, request);
                 }
 
@@ -243,6 +249,55 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ─── Saveable file detection ─────────────────────────────
+
+    /**
+     * Returns true when the request is worth intercepting as possible media.
+     *
+     * Intercepting does not double-download matching requests: teeStream returns
+     * its OkHttp response body back to WebView. We still keep this filter fairly
+     * strict to avoid replacing normal page, script, and stylesheet loads.
+     */
+    private boolean shouldTrySavingRequest(WebResourceRequest request, String lower) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) return false;
+
+        String scheme = request.getUrl().getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return false;
+
+        if (looksLikeSavableFileByUrl(lower)) return true;
+
+        // Gallery sites often serve images from extensionless CDN URLs. In those
+        // cases the browser request headers are usually the only early signal.
+        if (request.isForMainFrame()) return false;
+
+        String fetchDest = getRequestHeader(request, "Sec-Fetch-Dest");
+        if (fetchDest != null) {
+            String dest = fetchDest.toLowerCase(Locale.ROOT);
+            if (dest.equals("image") || dest.equals("video") || dest.equals("audio")) return true;
+        }
+
+        String accept = getRequestHeader(request, "Accept");
+        if (accept != null && accept.toLowerCase(Locale.ROOT).contains("image/")) return true;
+
+        return lower.contains("/image/")
+            || lower.contains("/images/")
+            || lower.contains("/img/")
+            || lower.contains("/photo/")
+            || lower.contains("/photos/")
+            || lower.contains("/thumb")
+            || lower.contains("/thumbnail")
+            || lower.contains("/preview")
+            || lower.contains("/sample")
+            || lower.contains("/samples/")
+            || lower.contains("/media/")
+            || lower.contains("/uploads/");
+    }
+
+    private static String getRequestHeader(WebResourceRequest request, String wantedName) {
+        for (Map.Entry<String, String> e : request.getRequestHeaders().entrySet()) {
+            if (e.getKey().equalsIgnoreCase(wantedName)) return e.getValue();
+        }
+        return null;
+    }
 
     /**
      * Returns true if the URL strongly suggests a saveable media or image file.
@@ -358,9 +413,14 @@ public class MainActivity extends AppCompatActivity {
         try {
             Request.Builder rb = new Request.Builder().url(url);
 
-            // Forward original request headers so CDNs don't reject us
+            // Forward original request headers so CDNs don't reject us. If WebView
+            // omits Cookie from this callback, copy the page cookies explicitly so
+            // authenticated/gallery images can still be fetched by the replacement
+            // OkHttp request.
+            boolean hasCookieHeader = false;
             for (Map.Entry<String, String> e : original.getRequestHeaders().entrySet()) {
                 String key = e.getKey();
+                if (key.equalsIgnoreCase("cookie")) hasCookieHeader = true;
                 if (!key.equalsIgnoreCase("host") &&
                     !key.equalsIgnoreCase("content-length") &&
                     !key.equalsIgnoreCase("connection")) {
@@ -368,15 +428,12 @@ public class MainActivity extends AppCompatActivity {
                     catch (IllegalArgumentException ignored) {} // skip malformed headers
                 }
             }
+            if (!hasCookieHeader) {
+                String cookie = CookieManager.getInstance().getCookie(url);
+                if (!TextUtils.isEmpty(cookie)) rb.header("Cookie", cookie);
+            }
 
             Response response = client.newCall(rb.build()).execute();
-
-            // If response is not 2xx, pass through without saving
-            if (!response.isSuccessful()) {
-                response.close();
-                savingUrls.remove(url);
-                return null;
-            }
 
             ResponseBody body = response.body();
             if (body == null) {
@@ -398,16 +455,27 @@ public class MainActivity extends AppCompatActivity {
                 // Not a saveable file — return null so WebView fetches it normally
                 response.close();
                 savingUrls.remove(url);
-                return null;
+                String passThroughMime = !TextUtils.isEmpty(rawCt)
+                        ? rawCt.split(";")[0].trim()
+                        : "application/octet-stream";
+                return buildWebResourceResponse(response, passThroughMime, fullResponseStream);
             }
 
-            // Build save path
-            String fileName  = buildFileName(url, mimeType);
-            File   saveFile  = getSaveFile(fileName, mimeType);
-            FileOutputStream fileOut = new FileOutputStream(saveFile);
+            // Build save path. If saving cannot start, still pass the already
+            // fetched response to WebView so we do not force a second request.
+            String fileName = buildFileName(url, mimeType);
+            FileOutputStream fileOut;
+            try {
+                File saveFile = getSaveFile(fileName, mimeType);
+                fileOut = new FileOutputStream(saveFile);
+            } catch (Exception saveError) {
+                saveError.printStackTrace();
+                savingUrls.remove(url);
+                return buildWebResourceResponse(response, mimeType, fullResponseStream);
+            }
 
             // The tee: one stream, two sinks
-            TeeInputStream tee = new TeeInputStream(body.byteStream(), fileOut) {
+            TeeInputStream tee = new TeeInputStream(fullResponseStream, fileOut) {
                 @Override
                 public void close() throws java.io.IOException {
                     try { super.close(); }
@@ -451,6 +519,43 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private WebResourceResponse buildWebResourceResponse(
+            Response response, String mimeType, InputStream stream) {
+        // Build response headers (strip encoding/length that would confuse WebView)
+        Map<String, String> headers = new LinkedHashMap<>();
+        for (String name : response.headers().names()) {
+            String lname = name.toLowerCase(Locale.ROOT);
+            if (!lname.equals("content-encoding") &&
+                !lname.equals("transfer-encoding") &&
+                !lname.equals("content-length")) {
+                headers.put(name, response.header(name, ""));
+            }
+        }
+        headers.put("Content-Type", mimeType);
+        headers.put("Access-Control-Allow-Origin", "*");
+        headers.put("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+
+        return new WebResourceResponse(
+                mimeType,
+                getResponseEncoding(mimeType),
+                response.code(),
+                TextUtils.isEmpty(response.message()) ? "OK" : response.message(),
+                headers,
+                stream
+        );
+    }
+
+    private static String getResponseEncoding(String mimeType) {
+        if (mimeType == null) return "binary";
+        String lower = mimeType.toLowerCase(Locale.ROOT);
+        return lower.startsWith("text/") ||
+                lower.contains("json") ||
+                lower.contains("xml") ||
+                lower.contains("javascript")
+                ? "UTF-8"
+                : "binary";
+    }
+
     // ─── File helpers ─────────────────────────────────────────
 
     private String guessMime(String url) {
@@ -482,27 +587,37 @@ public class MainActivity extends AppCompatActivity {
 
         String name = path.substring(path.lastIndexOf('/') + 1);
 
-        // If name is empty or looks like a random token (no dot, >40 chars), generate one
+        String ext = extensionForMime(mime);
+
+        // If name is empty or looks like a huge random token, generate one.
+        // Otherwise, preserve extensionless CDN names but append an extension so
+        // Android/gallery MIME detection can recognize the saved file later.
         if (name.isEmpty() || (!name.contains(".") && name.length() > 40) || name.length() > 120) {
-            String ext = mime.contains("jpeg")  ? ".jpg"
-                       : mime.contains("png")   ? ".png"
-                       : mime.contains("webp")  ? ".webp"
-                       : mime.contains("gif")   ? ".gif"
-                       : mime.contains("bmp")   ? ".bmp"
-                       : mime.contains("heic")  ? ".heic"
-                       : mime.contains("heif")  ? ".heif"
-                       : mime.contains("avif")  ? ".avif"
-                       : mime.contains("svg")   ? ".svg"
-                       : mime.contains("mp4")   ? ".mp4"
-                       : mime.contains("webm")  ? ".webm"
-                       : mime.contains("mp2t")  ? ".ts"
-                       : mime.contains("mpeg")  ? ".mp3"
-                       : mime.contains("aac")   ? ".aac"
-                       : mime.contains("ogg")   ? ".ogg"
-                       : ".media";
             name = "netsaver_" + System.currentTimeMillis() + ext;
+        } else if (!name.contains(".")) {
+            name = name + ext;
         }
         return name;
+    }
+
+    private static String extensionForMime(String mime) {
+        String lower = mime == null ? "" : mime.toLowerCase(Locale.ROOT);
+        return lower.contains("jpeg")  ? ".jpg"
+             : lower.contains("png")   ? ".png"
+             : lower.contains("webp")  ? ".webp"
+             : lower.contains("gif")   ? ".gif"
+             : lower.contains("bmp")   ? ".bmp"
+             : lower.contains("heic")  ? ".heic"
+             : lower.contains("heif")  ? ".heif"
+             : lower.contains("avif")  ? ".avif"
+             : lower.contains("svg")   ? ".svg"
+             : lower.contains("mp4")   ? ".mp4"
+             : lower.contains("webm")  ? ".webm"
+             : lower.contains("mp2t")  ? ".ts"
+             : lower.contains("mpeg")  ? ".mp3"
+             : lower.contains("aac")   ? ".aac"
+             : lower.contains("ogg")   ? ".ogg"
+             : ".media";
     }
 
     private File getSaveFile(String fileName, String mimeType) {
