@@ -1,0 +1,51 @@
+name: Unzip and Commit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tocGen.zip
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Check and unzip tocGen.zip
+        run: |
+          if [ ! -f tocGen.zip ]; then
+            echo "❌ tocGen.zip not found."
+            exit 1
+          fi
+          mkdir -p temp
+          unzip -o tocGen.zip -d temp
+          rm tocGen.zip
+
+      - name: Clean everything except temp, .git, and .github
+        run: |
+          shopt -s dotglob
+          for f in * .*; do
+            if [[ "$f" != "." && "$f" != ".." && "$f" != "temp" && "$f" != ".git" && "$f" != ".github" ]]; then
+              rm -rf "$f"
+            fi
+          done
+
+      - name: Move extracted files to repo root
+        run: |
+          shopt -s dotglob
+          mv temp/* temp/.* ./ 2>/dev/null || true
+          rm -rf temp
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Extracted tocGen.zip" || echo "Nothing to commit"
+          git push
