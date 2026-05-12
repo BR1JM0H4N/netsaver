@@ -12,6 +12,7 @@ import android.widget.EditText;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
@@ -67,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
         goButton.setOnClickListener(v -> {
 
-            String url = urlInput.getText().toString();
+            String url = urlInput.getText().toString().trim();
 
             if (!url.startsWith("http")) {
                 url = "https://" + url;
@@ -124,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
             int bytesRead;
 
             while ((bytesRead = inputStream.read(buffer)) != -1) {
+
                 outputStream.write(buffer, 0, bytesRead);
             }
 
@@ -131,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
             outputStream.close();
             inputStream.close();
 
-            InputStream replayStream = file.inputStream();
+            InputStream replayStream = new FileInputStream(file);
 
             String mimeType = response.header(
                     "content-type",
@@ -150,6 +152,7 @@ public class MainActivity extends AppCompatActivity {
             );
 
         } catch (Exception e) {
+
             e.printStackTrace();
         }
 
@@ -160,8 +163,11 @@ public class MainActivity extends AppCompatActivity {
     public void onBackPressed() {
 
         if (webView.canGoBack()) {
+
             webView.goBack();
+
         } else {
+
             super.onBackPressed();
         }
     }
