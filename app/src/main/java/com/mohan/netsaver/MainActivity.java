@@ -376,63 +376,6 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    private static String sniffMimeType(byte[] bytes, int length) {
-        if (bytes == null || length <= 0) return null;
-
-        if (length >= 3 &&
-                (bytes[0] & 0xFF) == 0xFF &&
-                (bytes[1] & 0xFF) == 0xD8 &&
-                (bytes[2] & 0xFF) == 0xFF) return "image/jpeg";
-        if (startsWith(bytes, length, new byte[] {(byte) 0x89, 'P', 'N', 'G'})) return "image/png";
-        if (startsWith(bytes, length, "GIF87a") || startsWith(bytes, length, "GIF89a")) return "image/gif";
-        if (startsWith(bytes, length, "BM")) return "image/bmp";
-        if (length >= 12 && startsWith(bytes, length, "RIFF") && asciiEquals(bytes, 8, "WEBP")) return "image/webp";
-        if (containsAscii(bytes, length, "ftypavif") || containsAscii(bytes, length, "ftypavis")) return "image/avif";
-        if (containsAscii(bytes, length, "ftypheic") || containsAscii(bytes, length, "ftypheix") ||
-                containsAscii(bytes, length, "ftyphevc") || containsAscii(bytes, length, "ftypmif1")) return "image/heic";
-        if (startsWith(bytes, length, "OggS")) return "audio/ogg";
-        if (startsWith(bytes, length, "ID3") ||
-                (length >= 2 && (bytes[0] & 0xFF) == 0xFF && ((bytes[1] & 0xE0) == 0xE0))) return "audio/mpeg";
-        if (containsAscii(bytes, length, "ftypmp4") || containsAscii(bytes, length, "ftypisom") ||
-                containsAscii(bytes, length, "ftypM4V") || containsAscii(bytes, length, "ftypMSNV")) return "video/mp4";
-
-        String start = new String(bytes, 0, Math.min(length, 128)).trim().toLowerCase(Locale.ROOT);
-        if (start.startsWith("<svg") || start.contains("<svg")) return "image/svg+xml";
-
-        return null;
-    }
-
-    private static boolean startsWith(byte[] bytes, int length, String prefix) {
-        return asciiEquals(bytes, length, 0, prefix);
-    }
-
-    private static boolean startsWith(byte[] bytes, int length, byte[] prefix) {
-        if (length < prefix.length) return false;
-        for (int i = 0; i < prefix.length; i++) {
-            if (bytes[i] != prefix[i]) return false;
-        }
-        return true;
-    }
-
-    private static boolean containsAscii(byte[] bytes, int length, String needle) {
-        for (int i = 0; i <= length - needle.length(); i++) {
-            if (asciiEquals(bytes, length, i, needle)) return true;
-        }
-        return false;
-    }
-
-    private static boolean asciiEquals(byte[] bytes, int offset, String value) {
-        return asciiEquals(bytes, bytes.length, offset, value);
-    }
-
-    private static boolean asciiEquals(byte[] bytes, int length, int offset, String value) {
-        if (offset < 0 || length < offset + value.length()) return false;
-        for (int i = 0; i < value.length(); i++) {
-            if ((byte) value.charAt(i) != bytes[offset + i]) return false;
-        }
-        return true;
-    }
-
     /**
      * Check the Content-Type of a response to confirm it's media or an image.
      * Used as a secondary check when the URL pattern isn't conclusive.
@@ -503,25 +446,14 @@ public class MainActivity extends AppCompatActivity {
             // incorrect Content-Type values (for example application/octet-stream),
             // so a strong URL extension match should still be saved with the MIME
             // guessed from the URL. This fixes image URLs such as .jpg?cacheBust.
-            InputStream responseStream = body.byteStream();
-            byte[] sniffBuffer = new byte[512];
-            int sniffedBytes = responseStream.read(sniffBuffer);
-            InputStream fullResponseStream = sniffedBytes > 0
-                    ? new SequenceInputStream(
-                            new ByteArrayInputStream(sniffBuffer, 0, sniffedBytes),
-                            responseStream)
-                    : responseStream;
-
             String rawCt = response.header("content-type", "");
             String mimeType = getSavableMimeType(url, rawCt);
-            if (mimeType == null) mimeType = sniffMimeType(sniffBuffer, sniffedBytes);
 
-            // Secondary filter: confirm it's actually media/image by Content-Type,
-            // by a concrete media extension in the URL, or by magic bytes.
-            if (!response.isSuccessful() || mimeType == null) {
-                // Not saveable, but we already made the network request. Return
-                // the same response body to WebView instead of returning null,
-                // which would make WebView re-request it and use more data.
+            // Secondary filter: confirm it's actually media/image by Content-Type
+            // or by a concrete media extension in the URL.
+            if (mimeType == null) {
+                // Not a saveable file — return null so WebView fetches it normally
+                response.close();
                 savingUrls.remove(url);
                 String passThroughMime = !TextUtils.isEmpty(rawCt)
                         ? rawCt.split(";")[0].trim()
@@ -557,7 +489,28 @@ public class MainActivity extends AppCompatActivity {
             // Notify UI
             mainHandler.post(() -> showSaveIndicator(fileName));
 
-            return buildWebResourceResponse(response, mimeType, tee);
+            // Build response headers (strip encoding/length that would confuse WebView)
+            Map<String, String> headers = new LinkedHashMap<>();
+            for (String name : response.headers().names()) {
+                String lname = name.toLowerCase(Locale.ROOT);
+                if (!lname.equals("content-encoding") &&
+                    !lname.equals("transfer-encoding") &&
+                    !lname.equals("content-length")) {
+                    headers.put(name, response.header(name, ""));
+                }
+            }
+            headers.put("Content-Type", mimeType);
+            headers.put("Access-Control-Allow-Origin", "*");
+            headers.put("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+
+            return new WebResourceResponse(
+                    mimeType,
+                    "binary",          // never re-decode; OkHttp already decoded gzip
+                    response.code(),
+                    "OK",
+                    headers,
+                    tee
+            );
 
         } catch (Exception e) {
             e.printStackTrace();
