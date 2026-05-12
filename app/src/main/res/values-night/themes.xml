@@ -8,6 +8,8 @@
         <item name="colorSecondary">@color/md_secondary</item>
         <item name="colorSurface">@color/md_surface</item>
         <item name="colorSurfaceVariant">@color/md_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/md_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/md_surface_container_high</item>
         <item name="colorOnSurface">@color/md_on_surface</item>
         <item name="colorOnSurfaceVariant">@color/md_on_surface_variant</item>
         <item name="android:colorBackground">@color/md_background</item>
