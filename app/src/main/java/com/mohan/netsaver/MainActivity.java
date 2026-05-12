@@ -265,31 +265,36 @@ public class MainActivity extends AppCompatActivity {
 
         if (looksLikeSavableFileByUrl(lower)) return true;
 
-        // Gallery sites often serve images from extensionless CDN URLs. In those
-        // cases the browser request headers are usually the only early signal.
+        // Gallery sites commonly hide full-size images behind extensionless CDN
+        // URLs (for example /media/abc123?w=1200&format=webp).  To catch those
+        // without spending extra bandwidth, we replace the browser request with
+        // our OkHttp request and only save after the response Content-Type/magic
+        // bytes prove it is media. Non-media probe responses are passed straight
+        // back to WebView instead of making WebView fetch them again.
         if (request.isForMainFrame()) return false;
 
         String fetchDest = getRequestHeader(request, "Sec-Fetch-Dest");
         if (fetchDest != null) {
             String dest = fetchDest.toLowerCase(Locale.ROOT);
             if (dest.equals("image") || dest.equals("video") || dest.equals("audio")) return true;
+            if (dest.equals("script") || dest.equals("style") || dest.equals("font") ||
+                    dest.equals("document") || dest.equals("iframe")) return false;
         }
 
         String accept = getRequestHeader(request, "Accept");
-        if (accept != null && accept.toLowerCase(Locale.ROOT).contains("image/")) return true;
+        if (accept != null) {
+            String lowerAccept = accept.toLowerCase(Locale.ROOT);
+            if (lowerAccept.contains("image/") || lowerAccept.contains("video/") ||
+                    lowerAccept.contains("audio/")) return true;
+            if (lowerAccept.contains("text/html") || lowerAccept.contains("text/css") ||
+                    lowerAccept.contains("javascript") || lowerAccept.contains("application/json")) {
+                return false;
+            }
+        }
 
-        return lower.contains("/image/")
-            || lower.contains("/images/")
-            || lower.contains("/img/")
-            || lower.contains("/photo/")
-            || lower.contains("/photos/")
-            || lower.contains("/thumb")
-            || lower.contains("/thumbnail")
-            || lower.contains("/preview")
-            || lower.contains("/sample")
-            || lower.contains("/samples/")
-            || lower.contains("/media/")
-            || lower.contains("/uploads/");
+        if (looksLikeNonSavableAssetByUrl(lower)) return false;
+
+        return hasGalleryMediaPathHint(lower) || hasImageTransformationHint(lower);
     }
 
     private static String getRequestHeader(WebResourceRequest request, String wantedName) {
@@ -344,17 +349,76 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    /** True if url contains ext immediately followed by end-of-string, '?', or '#' */
+    /**
+     * True if url contains ext as a file extension. Many gallery/CDN URLs put
+     * resize path segments after the original name (photo.jpg/1200x800) or use
+     * suffixes (photo.jpg:large), so accept any non-letter/digit after the ext.
+     */
     private static boolean segmentPattern(String lower, String ext) {
         int idx = lower.indexOf(ext);
         while (idx >= 0) {
+            int before = idx - 1;
             int after = idx + ext.length();
-            if (after == lower.length() || lower.charAt(after) == '?' || lower.charAt(after) == '#') {
-                return true;
-            }
+            boolean startsLikeExtension = before >= 0 && Character.isLetterOrDigit(lower.charAt(before));
+            boolean endsLikeExtension = after == lower.length() || !Character.isLetterOrDigit(lower.charAt(after));
+            if (startsLikeExtension && endsLikeExtension) return true;
             idx = lower.indexOf(ext, after);
         }
         return false;
+    }
+
+    private static boolean hasGalleryMediaPathHint(String lower) {
+        return lower.contains("/image")
+            || lower.contains("/img")
+            || lower.contains("/photo")
+            || lower.contains("/picture")
+            || lower.contains("/pic/")
+            || lower.contains("/thumb")
+            || lower.contains("/thumbnail")
+            || lower.contains("/preview")
+            || lower.contains("/sample")
+            || lower.contains("/media/")
+            || lower.contains("/uploads/")
+            || lower.contains("/cdn-cgi/image/")
+            || lower.contains("/resize/")
+            || lower.contains("/assets/");
+    }
+
+    private static boolean hasImageTransformationHint(String lower) {
+        return lower.contains("format=webp")
+            || lower.contains("format=jpg")
+            || lower.contains("format=jpeg")
+            || lower.contains("format=png")
+            || lower.contains("fm=webp")
+            || lower.contains("fm=jpg")
+            || lower.contains("fm=jpeg")
+            || lower.contains("fm=png")
+            || lower.contains("width=")
+            || lower.contains("height=")
+            || lower.contains("&w=")
+            || lower.contains("?w=")
+            || lower.contains("&h=")
+            || lower.contains("?h=")
+            || lower.contains("quality=")
+            || lower.contains("&q=")
+            || lower.contains("?q=")
+            || lower.contains("fit=")
+            || lower.contains("crop=")
+            || lower.contains("resize=");
+    }
+
+    private static boolean looksLikeNonSavableAssetByUrl(String lower) {
+        return segmentPattern(lower, ".js")
+            || segmentPattern(lower, ".css")
+            || segmentPattern(lower, ".json")
+            || segmentPattern(lower, ".html")
+            || segmentPattern(lower, ".htm")
+            || segmentPattern(lower, ".xml")
+            || segmentPattern(lower, ".woff")
+            || segmentPattern(lower, ".woff2")
+            || segmentPattern(lower, ".ttf")
+            || segmentPattern(lower, ".otf")
+            || segmentPattern(lower, ".ico");
     }
 
     /**
