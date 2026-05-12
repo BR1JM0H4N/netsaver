@@ -5,26 +5,30 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * TeeInputStream: reads from source, simultaneously writes every byte to sink.
- * This is the core of zero-double-bandwidth architecture.
- * Single network stream → WebView AND file simultaneously.
+ * TeeInputStream — zero-double-bandwidth core.
+ *
+ * Every byte read by the WebView is simultaneously written to the
+ * file output stream. One network request, two destinations.
+ *
+ * Thread-safety: read() and close() may be called from WebView's
+ * network thread; we guard the sink-close path with a volatile flag.
  */
 public class TeeInputStream extends InputStream {
 
-    private final InputStream source;
+    private final InputStream  source;
     private final OutputStream sink;
-    private boolean closed = false;
+    private volatile boolean   sinkClosed = false;
 
     public TeeInputStream(InputStream source, OutputStream sink) {
         this.source = source;
-        this.sink = sink;
+        this.sink   = sink;
     }
 
     @Override
     public int read() throws IOException {
         int b = source.read();
         if (b != -1) {
-            sink.write(b);
+            safeSinkWrite(b);
         } else {
             closeSink();
         }
@@ -35,7 +39,7 @@ public class TeeInputStream extends InputStream {
     public int read(byte[] buf, int off, int len) throws IOException {
         int n = source.read(buf, off, len);
         if (n > 0) {
-            sink.write(buf, off, n);
+            safeSinkWrite(buf, off, n);
         } else if (n == -1) {
             closeSink();
         }
@@ -47,24 +51,36 @@ public class TeeInputStream extends InputStream {
         return read(buf, 0, buf.length);
     }
 
-    private void closeSink() {
-        if (!closed) {
-            closed = true;
-            try {
-                sink.flush();
-                sink.close();
-            } catch (IOException ignored) {}
-        }
+    @Override
+    public int available() throws IOException {
+        return source.available();
     }
 
     @Override
     public void close() throws IOException {
-        closeSink();
-        source.close();
+        try {
+            source.close();
+        } finally {
+            closeSink();
+        }
     }
 
-    @Override
-    public int available() throws IOException {
-        return source.available();
+    // ── helpers ──────────────────────────────────────────────
+
+    private void safeSinkWrite(int b) {
+        if (sinkClosed) return;
+        try { sink.write(b); } catch (IOException ignored) {}
+    }
+
+    private void safeSinkWrite(byte[] buf, int off, int n) {
+        if (sinkClosed) return;
+        try { sink.write(buf, off, n); } catch (IOException ignored) {}
+    }
+
+    private void closeSink() {
+        if (sinkClosed) return;
+        sinkClosed = true;
+        try { sink.flush(); } catch (IOException ignored) {}
+        try { sink.close(); } catch (IOException ignored) {}
     }
 }

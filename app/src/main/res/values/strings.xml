@@ -1,7 +1,6 @@
 <resources>
     <string name="app_name">NetSaver</string>
-    <string name="saved_files">Saved Files</string>
-    <string name="no_saved_files">No saved files yet</string>
-    <string name="saving">Saving…</string>
-    <string name="saved">Saved!</string>
+    <string name="search_or_enter_url">Search or enter address</string>
+    <string name="no_saved_files">No media saved yet</string>
+    <string name="saved_files">Saved Media</string>
 </resources>

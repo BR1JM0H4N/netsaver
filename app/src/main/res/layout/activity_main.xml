@@ -1,189 +1,266 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
+<androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="?attr/colorBackground"
+    android:fitsSystemWindows="false">
 
-    <!-- TOP BROWSER BAR -->
+    <!-- ═══════════════════ TOP TOOLBAR ═══════════════════ -->
     <LinearLayout
         android:id="@+id/topBar"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:elevation="4dp"
-        android:background="#FFFFFF"
-        app:layout_anchor="@id/topBar">
+        android:background="?attr/colorSurface"
+        android:elevation="3dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Navigation Row -->
+        <!-- System status bar spacer -->
+        <View
+            android:id="@+id/statusBarSpacer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp" />
+
+        <!-- Navigation row -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="52dp"
             android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:gravity="center_vertical">
+            android:paddingEnd="4dp">
 
+            <!-- Back -->
             <ImageButton
                 android:id="@+id/btnBack"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:src="@android:drawable/ic_media_previous"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_back"
+                android:background="@drawable/ripple_circle"
                 android:contentDescription="Back"
-                android:alpha="0.4" />
+                android:padding="8dp"
+                android:alpha="0.38" />
 
+            <!-- Forward -->
             <ImageButton
                 android:id="@+id/btnForward"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:src="@android:drawable/ic_media_next"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_forward"
+                android:background="@drawable/ripple_circle"
                 android:contentDescription="Forward"
-                android:alpha="0.4" />
+                android:padding="8dp"
+                android:alpha="0.38" />
 
-            <!-- URL Bar -->
+            <!-- URL Bar pill -->
             <LinearLayout
+                android:id="@+id/urlBarContainer"
                 android:layout_width="0dp"
-                android:layout_height="38dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
                 android:orientation="horizontal"
-                android:background="@drawable/url_bar_bg"
+                android:background="@drawable/bg_url_bar"
                 android:gravity="center_vertical"
-                android:paddingStart="10dp"
+                android:paddingStart="12dp"
                 android:paddingEnd="4dp">
 
                 <ImageView
-                    android:id="@+id/secureIcon"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:src="@android:drawable/ic_lock_lock"
-                    android:alpha="0.5" />
+                    android:id="@+id/iconSecurity"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/ic_lock"
+                    android:layout_marginEnd="6dp"
+                    android:alpha="0.6" />
 
                 <EditText
                     android:id="@+id/urlInput"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:layout_marginStart="6dp"
                     android:background="@null"
-                    android:hint="Search or enter URL"
-                    android:textSize="14sp"
+                    android:hint="@string/search_or_enter_url"
+                    android:textSize="13sp"
                     android:singleLine="true"
                     android:inputType="textUri"
-                    android:imeOptions="actionGo"
-                    android:textColor="#1A1A1A"
-                    android:textColorHint="#9E9E9E" />
+                    android:imeOptions="actionGo|flagNoExtractUi"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textColorHint="?attr/colorOnSurfaceVariant"
+                    android:ellipsize="end" />
 
                 <ImageButton
                     android:id="@+id/btnClearUrl"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:src="@android:drawable/ic_menu_close_clear_cancel"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:alpha="0.5"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_close"
+                    android:background="@drawable/ripple_circle"
+                    android:padding="8dp"
                     android:visibility="gone"
                     android:contentDescription="Clear" />
 
             </LinearLayout>
 
+            <!-- Refresh/Stop -->
             <ImageButton
                 android:id="@+id/btnRefresh"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:src="@android:drawable/ic_popup_sync"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Refresh" />
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_refresh"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Refresh"
+                android:padding="8dp" />
 
+            <!-- Menu -->
             <ImageButton
                 android:id="@+id/btnMenu"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:src="@android:drawable/ic_menu_more"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Menu" />
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_more_vert"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Menu"
+                android:padding="8dp" />
 
         </LinearLayout>
 
-        <!-- Progress Bar -->
-        <ProgressBar
+        <!-- Load progress -->
+        <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@+id/pageLoadProgress"
-            style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:max="100"
-            android:progressTint="#1565C0"
-            android:visibility="gone" />
+            android:layout_height="wrap_content"
+            android:indeterminate="false"
+            android:visibility="gone"
+            app:trackCornerRadius="0dp"
+            app:trackThickness="2dp"
+            app:indicatorColor="?attr/colorPrimary"
+            app:trackColor="?attr/colorSurfaceVariant" />
 
     </LinearLayout>
 
-    <!-- WEBVIEW -->
+    <!-- ═══════════════════ WEBVIEW ═══════════════════ -->
     <WebView
         android:id="@+id/webView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="59dp"
-        android:layout_marginBottom="56dp" />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- SAVE STATUS SNACKBAR AREA (handled in code) -->
-
-    <!-- BOTTOM TOOLBAR -->
+    <!-- ═══════════════════ SAVE INDICATOR (floating chip) ═══════════════════ -->
     <LinearLayout
-        android:id="@+id/bottomBar"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_gravity="bottom"
+        android:id="@+id/saveIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
         android:orientation="horizontal"
-        android:background="#FFFFFF"
-        android:elevation="4dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="14dp"
+        android:background="@drawable/bg_save_chip"
+        android:elevation="6dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="8dp">
 
-        <ImageButton
-            android:id="@+id/btnHome"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:src="@android:drawable/ic_menu_compass"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Home" />
+        <ImageView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_download"
+            android:layout_marginEnd="6dp" />
 
-        <ImageButton
-            android:id="@+id/btnBookmarks"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:src="@android:drawable/ic_menu_agenda"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Bookmarks" />
-
-        <ImageButton
-            android:id="@+id/btnSavedFiles"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:src="@android:drawable/ic_menu_save"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Saved Files" />
-
-        <ImageButton
-            android:id="@+id/btnShare"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:src="@android:drawable/ic_menu_share"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Share" />
-
-        <ImageButton
-            android:id="@+id/btnNewTab"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:src="@android:drawable/ic_input_add"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="New Tab" />
+        <TextView
+            android:id="@+id/saveIndicatorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnPrimaryContainer"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:maxWidth="220dp"
+            android:text="Saving…" />
 
     </LinearLayout>
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+    <!-- ═══════════════════ BOTTOM NAV BAR ═══════════════════ -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="?attr/colorSurface"
+        android:elevation="3dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOutline"
+            android:alpha="0.12" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageButton
+                android:id="@+id/btnHome"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_home"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Home"
+                android:padding="12dp" />
+
+            <ImageButton
+                android:id="@+id/btnSavedFiles"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_folder"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Saved Files"
+                android:padding="12dp" />
+
+            <ImageButton
+                android:id="@+id/btnShare"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_share"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Share"
+                android:padding="12dp" />
+
+            <ImageButton
+                android:id="@+id/btnNewTab"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_open_browser"
+                android:background="@drawable/ripple_circle"
+                android:contentDescription="Open in Browser"
+                android:padding="12dp" />
+
+        </LinearLayout>
+
+        <!-- System nav bar spacer -->
+        <View
+            android:id="@+id/navBarSpacer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -2,18 +2,27 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="72dp"
     android:orientation="horizontal"
-    android:padding="12dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp"
     android:gravity="center_vertical"
     android:background="?attr/selectableItemBackground">
 
-    <ImageView
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:src="@android:drawable/ic_media_play"
-        android:layout_marginEnd="12dp" />
+    <!-- Icon container -->
+    <LinearLayout
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:gravity="center"
+        android:background="@drawable/bg_save_chip"
+        android:layout_marginEnd="12dp">
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_video" />
+    </LinearLayout>
 
+    <!-- Text -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -25,25 +34,28 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="14sp"
-            android:textColor="#1A1A1A"
+            android:textColor="?attr/colorOnSurface"
             android:maxLines="1"
-            android:ellipsize="middle" />
+            android:ellipsize="middle"
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:id="@+id/fileSize"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="12sp"
-            android:textColor="#757575" />
-
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginTop="2dp" />
     </LinearLayout>
 
+    <!-- Delete -->
     <ImageButton
         android:id="@+id/btnDelete"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:src="@android:drawable/ic_menu_delete"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/ic_delete"
+        android:background="@drawable/ripple_circle"
+        android:padding="8dp"
         android:contentDescription="Delete" />
 
 </LinearLayout>
