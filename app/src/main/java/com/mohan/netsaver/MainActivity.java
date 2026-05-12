@@ -729,7 +729,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private Uri getContentUri(File file) {
-        return FileProvider.getUriForFile(this, BuildConfig.APPLICATION_ID + ".fileprovider", file);
+        return FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
     }
 
     private boolean isImageFile(File file) {
