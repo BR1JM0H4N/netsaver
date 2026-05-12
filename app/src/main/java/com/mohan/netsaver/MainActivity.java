@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    private static final String HOME_URL = "https://www.google.com";
+    private static final String HOME_URL = "https://duckduckgo.com/";
 
     // Track URLs already being saved (avoid duplicate saves of same segment)
     private final java.util.Set<String> savingUrls =
@@ -860,7 +860,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (input.contains(".") && !input.contains(" ") && !input.startsWith(".")) {
             url = "https://" + input;
         } else {
-            url = "https://www.google.com/search?q=" + Uri.encode(input);
+            url = "https://duckduckgo.com/?q=" + Uri.encode(input);
         }
         webView.loadUrl(url);
     }
