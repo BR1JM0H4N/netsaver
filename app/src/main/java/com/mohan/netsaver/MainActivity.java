@@ -198,12 +198,10 @@ public class MainActivity extends AppCompatActivity {
              * Detection strategy (fixes why v2 never saved anything):
              *
              *  1. URL pattern  — covers well-known extensions/paths
-             *  2. Content-Type — catches CDN URLs with no file extension
-             *     We make a HEAD request first; if it's video/audio we tee it.
+             *  2. Content-Type — confirms matched URLs are media/images before teeing.
              *
              * What we do NOT save:
              *  • .m3u8 playlists  — text manifests, useless as standalone files
-             *  • Very small files (<4 KB) — likely init segments / key files
              */
             @Override
             public WebResourceResponse shouldInterceptRequest(
@@ -213,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
                 String lower = url.toLowerCase(Locale.ROOT);
 
                 // Quick URL-pattern check (fast path, no network)
-                if (looksLikeMediaByUrl(lower)) {
+                if (looksLikeSavableFileByUrl(lower)) {
                     return teeStream(url, request);
                 }
 
@@ -234,24 +232,31 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ─── Media detection ─────────────────────────────────────
+    // ─── Saveable file detection ─────────────────────────────
 
     /**
-     * Returns true if the URL strongly suggests a binary media segment.
+     * Returns true if the URL strongly suggests a saveable media or image file.
      *
      * Deliberately excludes .m3u8 (playlist text, not playable standalone)
      * and generic "video" words without a concrete extension (too noisy).
      */
-    private boolean looksLikeMediaByUrl(String lower) {
+    private boolean looksLikeSavableFileByUrl(String lower) {
+        // Concrete image extensions
+        if (segmentPattern(lower, ".jpg")  || segmentPattern(lower, ".jpeg") ||
+            segmentPattern(lower, ".png")  || segmentPattern(lower, ".webp") ||
+            segmentPattern(lower, ".gif")  || segmentPattern(lower, ".bmp")  ||
+            segmentPattern(lower, ".heic") || segmentPattern(lower, ".heif") ||
+            segmentPattern(lower, ".avif") || segmentPattern(lower, ".svg")) return true;
+
         // Concrete video extensions
-        if (lower.contains(".mp4")  || lower.contains(".webm") ||
-            lower.contains(".mkv")  || lower.contains(".avi")  ||
-            lower.contains(".mov"))  return true;
+        if (segmentPattern(lower, ".mp4")  || segmentPattern(lower, ".webm") ||
+            segmentPattern(lower, ".mkv")  || segmentPattern(lower, ".avi")  ||
+            segmentPattern(lower, ".mov"))  return true;
 
         // Audio
-        if (lower.contains(".mp3")  || lower.contains(".aac")  ||
-            lower.contains(".ogg")  || lower.contains(".opus") ||
-            lower.contains(".flac") || lower.contains(".m4a"))  return true;
+        if (segmentPattern(lower, ".mp3")  || segmentPattern(lower, ".aac")  ||
+            segmentPattern(lower, ".ogg")  || segmentPattern(lower, ".opus") ||
+            segmentPattern(lower, ".flac") || segmentPattern(lower, ".m4a"))  return true;
 
         // HLS transport stream segments (NOT the .m3u8 playlist itself)
         // Matches both ".ts" and ".ts?token=xxx"
@@ -283,14 +288,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Check the Content-Type of a response to confirm it's media.
+     * Check the Content-Type of a response to confirm it's media or an image.
      * Used as a secondary check when the URL pattern isn't conclusive.
      */
-    private static boolean isMediaContentType(String ct) {
+    private static boolean isSavableContentType(String ct) {
         if (ct == null || ct.isEmpty()) return false;
         String lower = ct.toLowerCase(Locale.ROOT);
         return lower.startsWith("video/")
             || lower.startsWith("audio/")
+            || lower.startsWith("image/")
             || lower.contains("mp4")
             || lower.contains("webm")
             || lower.contains("mp2t")
@@ -351,10 +357,10 @@ public class MainActivity extends AppCompatActivity {
                     ? rawCt.split(";")[0].trim()
                     : guessMime(url);
 
-            // Secondary filter: confirm it's actually media by Content-Type
+            // Secondary filter: confirm it's actually media/image by Content-Type
             // (catches CDN URLs with no extension that we let through by URL pattern)
-            if (!isMediaContentType(mimeType)) {
-                // Not media — return null so WebView fetches it normally
+            if (!isSavableContentType(mimeType)) {
+                // Not a saveable file — return null so WebView fetches it normally
                 response.close();
                 savingUrls.remove(url);
                 return null;
@@ -362,7 +368,7 @@ public class MainActivity extends AppCompatActivity {
 
             // Build save path
             String fileName  = buildFileName(url, mimeType);
-            File   saveFile  = getSaveFile(fileName);
+            File   saveFile  = getSaveFile(fileName, mimeType);
             FileOutputStream fileOut = new FileOutputStream(saveFile);
 
             // The tee: one stream, two sinks
@@ -413,6 +419,15 @@ public class MainActivity extends AppCompatActivity {
 
     private String guessMime(String url) {
         String lower = url.toLowerCase(Locale.ROOT);
+        if (lower.contains(".jpg") || lower.contains(".jpeg")) return "image/jpeg";
+        if (lower.contains(".png"))  return "image/png";
+        if (lower.contains(".webp")) return "image/webp";
+        if (lower.contains(".gif"))  return "image/gif";
+        if (lower.contains(".bmp"))  return "image/bmp";
+        if (lower.contains(".heic")) return "image/heic";
+        if (lower.contains(".heif")) return "image/heif";
+        if (lower.contains(".avif")) return "image/avif";
+        if (lower.contains(".svg"))  return "image/svg+xml";
         if (lower.contains(".mp4"))  return "video/mp4";
         if (lower.contains(".webm")) return "video/webm";
         if (lower.contains(".ts"))   return "video/mp2t";
@@ -433,7 +448,16 @@ public class MainActivity extends AppCompatActivity {
 
         // If name is empty or looks like a random token (no dot, >40 chars), generate one
         if (name.isEmpty() || (!name.contains(".") && name.length() > 40) || name.length() > 120) {
-            String ext = mime.contains("mp4")   ? ".mp4"
+            String ext = mime.contains("jpeg")  ? ".jpg"
+                       : mime.contains("png")   ? ".png"
+                       : mime.contains("webp")  ? ".webp"
+                       : mime.contains("gif")   ? ".gif"
+                       : mime.contains("bmp")   ? ".bmp"
+                       : mime.contains("heic")  ? ".heic"
+                       : mime.contains("heif")  ? ".heif"
+                       : mime.contains("avif")  ? ".avif"
+                       : mime.contains("svg")   ? ".svg"
+                       : mime.contains("mp4")   ? ".mp4"
                        : mime.contains("webm")  ? ".webm"
                        : mime.contains("mp2t")  ? ".ts"
                        : mime.contains("mpeg")  ? ".mp3"
@@ -445,8 +469,11 @@ public class MainActivity extends AppCompatActivity {
         return name;
     }
 
-    private File getSaveFile(String fileName) {
-        File dir = new File(getExternalFilesDir(Environment.DIRECTORY_MOVIES), "NetSaver");
+    private File getSaveFile(String fileName, String mimeType) {
+        String directoryType = mimeType != null && mimeType.toLowerCase(Locale.ROOT).startsWith("image/")
+                ? Environment.DIRECTORY_PICTURES
+                : Environment.DIRECTORY_MOVIES;
+        File dir = new File(getExternalFilesDir(directoryType), "NetSaver");
         if (!dir.exists()) dir.mkdirs();
         File f = new File(dir, fileName);
         if (f.exists()) {
@@ -601,15 +628,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSavedFilesDialog() {
-        File dir = new File(getExternalFilesDir(Environment.DIRECTORY_MOVIES), "NetSaver");
         List<SavedFile> files = new ArrayList<>();
-        if (dir.exists() && dir.listFiles() != null) {
-            for (File f : dir.listFiles()) {
-                if (f.isFile()) files.add(new SavedFile(f));
-            }
-        }
+        collectSavedFiles(files, Environment.DIRECTORY_MOVIES);
+        collectSavedFiles(files, Environment.DIRECTORY_PICTURES);
         if (files.isEmpty()) {
-            android.widget.Toast.makeText(this, "No saved media yet", android.widget.Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(this, "No saved files yet", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
         files.sort((a, b) -> Long.compare(b.file.lastModified(), a.file.lastModified()));
@@ -621,7 +644,7 @@ public class MainActivity extends AppCompatActivity {
 
         List<SavedFile> finalFiles = files;
         new AlertDialog.Builder(this, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
-                .setTitle("Saved Media")
+                .setTitle("Saved Files")
                 .setItems(items, (d, w) -> openFile(finalFiles.get(w).file))
                 .setNeutralButton("Delete All", (d, w) -> {
                     for (SavedFile sf : finalFiles) sf.file.delete();
@@ -629,6 +652,15 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Close", null)
                 .show();
+    }
+
+    private void collectSavedFiles(List<SavedFile> files, String directoryType) {
+        File dir = new File(getExternalFilesDir(directoryType), "NetSaver");
+        if (dir.exists() && dir.listFiles() != null) {
+            for (File f : dir.listFiles()) {
+                if (f.isFile()) files.add(new SavedFile(f));
+            }
+        }
     }
 
     private void openFile(File file) {

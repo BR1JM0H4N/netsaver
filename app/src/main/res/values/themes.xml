@@ -11,7 +11,6 @@
         <item name="colorOnSurface">@color/md_on_surface</item>
         <item name="colorOnSurfaceVariant">@color/md_on_surface_variant</item>
         <item name="android:colorBackground">@color/md_background</item>
-        <item name="colorBackground">@color/md_background</item>
         <item name="colorOutline">@color/md_outline</item>
         <item name="colorError">@color/md_error</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
