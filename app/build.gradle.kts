@@ -50,10 +50,6 @@ buildTypes {
   }
 }
 
-repositories {
-  google()
-  mavenCentral()
-}
 
 dependencies {
 
